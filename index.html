@@ -555,6 +555,19 @@ const SUPABASE_URL = 'https://jkfeazdsahwozsyqsama.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImprZmVhemRzYWh3b3pzeXFzYW1hIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4NTk4MDMsImV4cCI6MjA5NDQzNTgwM30.aCqZVoMcaLTPJOkO1V2rxXqHxvCrqhrKCMbM97kxEGU';
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+
+async function notifySlack(message) {
+  try {
+    await fetch('/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message })
+    });
+  } catch(e) {
+    console.log('Slack notification failed:', e);
+  }
+}
+
 let posts = [];
 let currentFilter = 'all';
 let activePostId = null;
@@ -630,6 +643,7 @@ async function submitPost() {
     showToast('Something went wrong. Try again.', true);
   } else {
     showToast('✓ Submitted! Misbah will review it shortly.');
+    await notifySlack('📝 *New post submitted for review!*\n*Title:* ' + title + '\n*Platform:* ' + selectedPlatform + (topic ? '\n*Topic:* ' + topic : '') + '\n\nReview it at https://nectar-content-review.vercel.app');
     ['d-title','d-content','d-topic','d-link','d-notes'].forEach(id => document.getElementById(id).value = '');
     selectedPlatform = '';
     document.getElementById('opt-li').classList.remove('selected');
@@ -748,9 +762,24 @@ function openModal(id) {
 
 function closeModal() { document.getElementById('modal').classList.remove('open'); }
 function closeModalBg(e) { if (e.target===document.getElementById('modal')) closeModal(); }
-async function greenlightFromModal() { await updateStatus(activePostId,'pending'); closeModal(); }
-async function approveFromModal() { await updateStatus(activePostId,'approved'); closeModal(); }
-async function rejectFromModal() { await updateStatus(activePostId,'rejected'); closeModal(); }
+async function greenlightFromModal() {
+  const p = posts.find(x => x.id === activePostId);
+  await updateStatus(activePostId,'pending');
+  await notifySlack('💡 *Idea greenlighted!*\n*Title:* ' + (p ? p.title : '') + ' has been approved as a post to develop.\n\nCheck the status at https://nectar-content-review.vercel.app');
+  closeModal();
+}
+async function approveFromModal() {
+  const p = posts.find(x => x.id === activePostId);
+  await updateStatus(activePostId,'approved');
+  await notifySlack('✅ *Post approved!*\n*Title:* ' + (p ? p.title : '') + '\n\nCheck the status at https://nectar-content-review.vercel.app');
+  closeModal();
+}
+async function rejectFromModal() {
+  const p = posts.find(x => x.id === activePostId);
+  await updateStatus(activePostId,'rejected');
+  await notifySlack('❌ *Post rejected.*\n*Title:* ' + (p ? p.title : '') + '\n\nCheck the status at https://nectar-content-review.vercel.app');
+  closeModal();
+}
 
 let mSelectedPlatform = '';
 
@@ -798,6 +827,7 @@ async function mSubmitPost() {
   const { error } = await db.from('posts').insert({ title, platform: mSelectedPlatform, topic: topic || 'General', link, notes: '', content, status: 'pending', scheduled_for: mSched || null });
   if (error) { showAddToast('Something went wrong. Try again.', true); return; }
   showAddToast('✓ Post added!');
+  await notifySlack('📝 *Misbah added a post directly.*\n*Title:* ' + title + '\n*Platform:* ' + mSelectedPlatform + '\n\nView it at https://nectar-content-review.vercel.app');
   document.getElementById('m-add-title').value = '';
   document.getElementById('m-add-content').value = '';
   document.getElementById('m-add-topic').value = '';
@@ -965,6 +995,7 @@ async function submitIdea() {
   if (error) { showIdeaToast('Something went wrong. Try again.', true); }
   else {
     showIdeaToast('Idea submitted! Misbah will review it.');
+    await notifySlack('💡 *New idea submitted!*\n*Title:* ' + title + '\n*Platform:* ' + selectedIdeaPlatform + '\n*Description:* ' + content + '\n\nReview it at https://nectar-content-review.vercel.app');
     document.getElementById('idea-title').value = '';
     document.getElementById('idea-desc').value = '';
     document.getElementById('idea-notes').value = '';
